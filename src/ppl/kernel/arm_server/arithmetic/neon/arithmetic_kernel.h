@@ -168,6 +168,74 @@ inline float16x8_t arithmetic_vector_kernel<float16x8_t, ARITHMETIC_DIV>(const f
 
 #endif
 
+#ifdef PPLNN_USE_ARMV8_2_BF16
+
+template <>
+inline __bf16 arithmetic_scalar_kernel<__bf16, ARITHMETIC_ADD>(const __bf16 s0, const __bf16 s1)
+{
+    return vcvth_bf16_f32(vcvtah_f32_bf16(s0) + vcvtah_f32_bf16(s1));
+}
+
+template <>
+inline __bf16 arithmetic_scalar_kernel<__bf16, ARITHMETIC_SUB>(const __bf16 s0, const __bf16 s1)
+{
+    return vcvth_bf16_f32(vcvtah_f32_bf16(s0) - vcvtah_f32_bf16(s1));
+}
+
+template <>
+inline __bf16 arithmetic_scalar_kernel<__bf16, ARITHMETIC_MUL>(const __bf16 s0, const __bf16 s1)
+{
+    return vcvth_bf16_f32(vcvtah_f32_bf16(s0) * vcvtah_f32_bf16(s1));
+}
+
+template <>
+inline __bf16 arithmetic_scalar_kernel<__bf16, ARITHMETIC_DIV>(const __bf16 s0, const __bf16 s1)
+{
+    return vcvth_bf16_f32(vcvtah_f32_bf16(s0) / vcvtah_f32_bf16(s1));
+}
+
+template <>
+inline bfloat16x8_t arithmetic_vector_kernel<bfloat16x8_t, ARITHMETIC_ADD>(const bfloat16x8_t v0, const bfloat16x8_t v1)
+{
+    float32x4_t v0_l = vcvt_f32_bf16(vget_low_bf16(v0));
+    float32x4_t v1_l = vcvt_f32_bf16(vget_low_bf16(v1));
+    float32x4_t v0_h = vcvt_f32_bf16(vget_high_bf16(v0));
+    float32x4_t v1_h = vcvt_f32_bf16(vget_high_bf16(v1));
+    return vcombine_bf16(vcvt_bf16_f32(vadd(v0_l, v1_l)), vcvt_bf16_f32(vadd(v0_h, v1_h)));
+}
+
+template <>
+inline bfloat16x8_t arithmetic_vector_kernel<bfloat16x8_t, ARITHMETIC_SUB>(const bfloat16x8_t v0, const bfloat16x8_t v1)
+{
+    float32x4_t v0_l = vcvt_f32_bf16(vget_low_bf16(v0));
+    float32x4_t v1_l = vcvt_f32_bf16(vget_low_bf16(v1));
+    float32x4_t v0_h = vcvt_f32_bf16(vget_high_bf16(v0));
+    float32x4_t v1_h = vcvt_f32_bf16(vget_high_bf16(v1));
+    return vcombine_bf16(vcvt_bf16_f32(vsub(v0_l, v1_l)), vcvt_bf16_f32(vsub(v0_h, v1_h)));
+}
+
+template <>
+inline bfloat16x8_t arithmetic_vector_kernel<bfloat16x8_t, ARITHMETIC_MUL>(const bfloat16x8_t v0, const bfloat16x8_t v1)
+{
+    float32x4_t v0_l = vcvt_f32_bf16(vget_low_bf16(v0));
+    float32x4_t v1_l = vcvt_f32_bf16(vget_low_bf16(v1));
+    float32x4_t v0_h = vcvt_f32_bf16(vget_high_bf16(v0));
+    float32x4_t v1_h = vcvt_f32_bf16(vget_high_bf16(v1));
+    return vcombine_bf16(vcvt_bf16_f32(vmul(v0_l, v1_l)), vcvt_bf16_f32(vmul(v0_h, v1_h)));
+}
+
+template <>
+inline bfloat16x8_t arithmetic_vector_kernel<bfloat16x8_t, ARITHMETIC_DIV>(const bfloat16x8_t v0, const bfloat16x8_t v1)
+{
+    float32x4_t v0_l = vcvt_f32_bf16(vget_low_bf16(v0));
+    float32x4_t v1_l = vcvt_f32_bf16(vget_low_bf16(v1));
+    float32x4_t v0_h = vcvt_f32_bf16(vget_high_bf16(v0));
+    float32x4_t v1_h = vcvt_f32_bf16(vget_high_bf16(v1));
+    return vcombine_bf16(vcvt_bf16_f32(vdiv(v0_l, v1_l)), vcvt_bf16_f32(vdiv(v0_h, v1_h)));
+}
+
+#endif
+
 }}}}; // namespace ppl::kernel::arm_server::neon
 
 #endif // __ST_PPL_KERNEL_ARM_SERVER_ARTIHMETIC_NEON_ARITHMETIC_KERNEL_H_

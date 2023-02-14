@@ -39,7 +39,7 @@ static ppl::common::RetCode arithmetic_eltwise_common(
     const int64_t unroll_len  = simd_w * 4;
     const int64_t unroll_body = round(length, unroll_len);
 
-    const vecType v_zero = vdup_n<eT, eN>(0);
+    // const vecType v_zero = vdup_n<eT, eN>(0);
 
     PRAGMA_OMP_PARALLEL_FOR()
     for (int64_t i = 0; i < unroll_body; i += unroll_len) {
@@ -59,10 +59,10 @@ static ppl::common::RetCode arithmetic_eltwise_common(
         vecType v_dst_3 = arithmetic_vector_kernel<vecType, op_type>(v_src0_3, v_src1_3);
 
         if (fuse_relu) {
-            v_dst_0 = vmax<vecType>(v_dst_0, v_zero);
-            v_dst_1 = vmax<vecType>(v_dst_1, v_zero);
-            v_dst_2 = vmax<vecType>(v_dst_2, v_zero);
-            v_dst_3 = vmax<vecType>(v_dst_3, v_zero);
+            v_dst_0 = vmax0<vecType>(v_dst_0);
+            v_dst_1 = vmax0<vecType>(v_dst_1);
+            v_dst_2 = vmax0<vecType>(v_dst_2);
+            v_dst_3 = vmax0<vecType>(v_dst_3);
         }
 
         vst<eT, eN>(dst + i + simd_w * 0, v_dst_0);
@@ -73,7 +73,7 @@ static ppl::common::RetCode arithmetic_eltwise_common(
     for (int64_t i = unroll_body; i < length; i++) {
         eT dst_val = arithmetic_scalar_kernel<eT, op_type>(src0[i], src1[i]);
         if (fuse_relu) {
-            dst_val = max(dst_val, (eT)0);
+            dst_val = max0(dst_val);
         }
         dst[i] = dst_val;
     }

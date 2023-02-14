@@ -23,6 +23,7 @@
 #include <stdint.h>
 #include <limits.h>
 #include <limits>
+#include <arm_neon.h>
 
 namespace ppl { namespace kernel { namespace arm_server {
 
@@ -31,6 +32,13 @@ inline T max(const T a, const T b)
 {
     static_assert(std::is_fundamental<T>::value, "only allow fundamental type");
     return a > b ? a : b;
+}
+
+template <typename T>
+inline T max0(const T a)
+{
+    static_assert(std::is_fundamental<T>::value, "only allow fundamental type");
+    return max(a, (T)0);
 }
 
 template <typename T>
@@ -135,6 +143,12 @@ inline __fp16 max(const __fp16 a, const __fp16 b)
 }
 
 template <>
+inline __fp16 max0(const __fp16 a)
+{
+    return max(a, (__fp16)0.0f);
+}
+
+template <>
 inline __fp16 min(const __fp16 a, const __fp16 b)
 {
     return a < b ? a : b;
@@ -150,6 +164,51 @@ template <>
 inline __fp16 numeric_min(void)
 {
     return -numeric_max<__fp16>();
+}
+
+#endif
+
+// bf16 specialization
+
+#ifdef PPLNN_USE_ARMV8_2_BF16
+
+template <>
+inline __bf16 max(const __bf16 a, const __bf16 b)
+{
+    float a_f32 = vcvtah_f32_bf16(a);
+    float b_f32 = vcvtah_f32_bf16(b);
+    float max_f32 = a_f32 > b_f32 ? a_f32 : b_f32;
+    return vcvth_bf16_f32(max_f32);
+}
+
+template <>
+inline __bf16 max0(const __bf16 a)
+{
+    float a_f32 = vcvtah_f32_bf16(a);
+    float max_f32 = a_f32 > 0.0f ? a_f32 : 0.0f;
+    return vcvth_bf16_f32(max_f32);
+}
+
+
+template <>
+inline __bf16 min(const __bf16 a, const __bf16 b)
+{
+    float a_f32 = vcvtah_f32_bf16(a);
+    float b_f32 = vcvtah_f32_bf16(b);
+    float min_f32 = a_f32 < b_f32 ? a_f32 : b_f32;
+    return vcvth_bf16_f32(min_f32);
+}
+
+template <>
+inline __bf16 numeric_max(void)
+{
+    return vcvth_bf16_f32(std::numeric_limits<float>().max());
+}
+
+template <>
+inline __bf16 numeric_min(void)
+{
+    return vcvth_bf16_f32(std::numeric_limits<float>().min());
 }
 
 #endif

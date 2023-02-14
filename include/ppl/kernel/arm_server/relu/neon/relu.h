@@ -19,6 +19,9 @@
 #define __ST_PPL_KERNEL_ARM_SERVER_SIGMOID_NEON_RELU_H_
 
 #include "ppl/kernel/arm_server/common/general_include.h"
+#ifdef PPLNN_USE_ARMV8_2_BF16
+#include <arm_neon.h>
+#endif
 
 namespace ppl { namespace kernel { namespace arm_server { namespace neon {
 
@@ -32,6 +35,13 @@ ppl::common::RetCode relu_fp16(
     const ppl::common::TensorShape *in_shape,
     const __fp16 *input,
     __fp16 *output);
+#endif
+
+#ifdef PPLNN_USE_ARMV8_2_BF16
+ppl::common::RetCode relu_bf16(
+    const ppl::common::TensorShape *in_shape,
+    const __bf16 *input,
+    __bf16 *output);
 #endif
 
 }}}}; // namespace ppl::kernel::arm_server::neon

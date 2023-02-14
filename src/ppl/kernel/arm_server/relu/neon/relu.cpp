@@ -100,4 +100,55 @@ ppl::common::RetCode relu_fp16(
 }
 #endif
 
+#ifdef PPLNN_USE_ARMV8_2_BF16
+ppl::common::RetCode relu_bf16(
+    const ppl::common::TensorShape *in_shape,
+    const __bf16 *input,
+    __bf16 *output)
+{
+    int64_t num_elmt               = in_shape->CalcElementsIncludingPadding();
+    const int64_t num_elmt_round32 = (num_elmt & (~31));
+    const int64_t num_elmt_round8  = (num_elmt & (~7));
+
+    if (num_elmt_round32 > 0) {
+        PRAGMA_OMP_PARALLEL()
+        {
+            float16x8_t vzeros = vdupq_n_f16(0.0f);
+            PRAGMA_OMP_FOR()
+            for (int64_t idx = 0; idx < num_elmt_round32; idx += 32) {
+                const __fp16 *input_base = (__fp16 *)input + idx;
+                __fp16 *output_base      = (__fp16 *)output + idx;
+                float16x8_t vin0         = vld1q_f16(input_base + 0);
+                float16x8_t vin1         = vld1q_f16(input_base + 8);
+                float16x8_t vin2         = vld1q_f16(input_base + 16);
+                float16x8_t vin3         = vld1q_f16(input_base + 24);
+                vin0                     = vmaxq_f16(vin0, vzeros);
+                vin1                     = vmaxq_f16(vin1, vzeros);
+                vin2                     = vmaxq_f16(vin2, vzeros);
+                vin3                     = vmaxq_f16(vin3, vzeros);
+                vst1q_f16(output_base + 0, vin0);
+                vst1q_f16(output_base + 8, vin1);
+                vst1q_f16(output_base + 16, vin2);
+                vst1q_f16(output_base + 24, vin3);
+            }
+        }
+    }
+    for (int64_t idx = num_elmt_round32; idx < num_elmt_round8; idx+=8) {
+        const float16x8_t vzeros = vdupq_n_f16(0.0f);
+        const __fp16 *input_base = (__fp16 *)input + idx;
+        __fp16 *output_base      = (__fp16 *)output + idx;
+        
+        float16x8_t vin          = vld1q_f16(input_base);
+        vin                      = vmaxq_f16(vin, vzeros);
+        vst1q_f16(output_base, vin);
+    }
+
+    for (int64_t idx = num_elmt_round8; idx < num_elmt; idx++) {
+        output[idx] = vcvth_bf16_f32(std::max((float)vcvtah_f32_bf16(input[idx]), (float)0.0f));
+    }
+
+    return ppl::common::RC_SUCCESS;
+}
+#endif
+
 }}}}; // namespace ppl::kernel::arm_server::neon

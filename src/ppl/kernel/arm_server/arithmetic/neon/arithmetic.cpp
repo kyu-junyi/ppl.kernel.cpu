@@ -25,43 +25,6 @@
 
 namespace ppl { namespace kernel { namespace arm_server { namespace neon {
 
-template <typename eT, arithmetic_op_type_t op_type, bool fuse_relu>
-ppl::common::RetCode arithmetic(
-    const ppl::common::TensorShape *src0_shape,
-    const ppl::common::TensorShape *src1_shape,
-    const ppl::common::TensorShape *dst_shape,
-    const eT *src0,
-    const eT *src1,
-    eT *dst)
-{
-    const bool is_eltwise = src0_shape->CalcElementsExcludingPadding() == dst_shape->CalcElementsExcludingPadding() &&
-                            src1_shape->CalcElementsExcludingPadding() == dst_shape->CalcElementsExcludingPadding();
-    if (is_eltwise) {
-        return arithmetic_eltwise_common<eT, op_type, fuse_relu>(dst_shape, src0, src1, dst);
-    }
-
-    const auto data_format = src0_shape->GetDataFormat();
-    if (data_format == ppl::common::DATAFORMAT_NDARRAY) {
-        return arithmetic_broadcast_ndarray_common<eT, op_type, fuse_relu>(src0_shape, src1_shape, dst_shape, src0, src1, dst);
-    }
-
-    // NBCX
-    if (std::is_same<eT, float>::value) {
-        if (data_format == ppl::common::DATAFORMAT_N4CX) { // fp32 n4cx
-            return arithmetic_broadcast_nbcx_common<float, 4, op_type, fuse_relu>(src0_shape, src1_shape, dst_shape, (const float *)src0, (const float *)src1, (float *)dst);
-        }
-    }
-#ifdef PPLNN_USE_ARMV8_2_FP16
-    if (std::is_same<eT, __fp16>::value) {
-        if (data_format == ppl::common::DATAFORMAT_N8CX) { // fp16 n8cx
-            return arithmetic_broadcast_nbcx_common<__fp16, 8, op_type, fuse_relu>(src0_shape, src1_shape, dst_shape, (const __fp16 *)src0, (const __fp16 *)src1, (__fp16 *)dst);
-        }
-    }
-#endif
-
-    return ppl::common::RC_UNSUPPORTED;
-}
-
 template <arithmetic_op_type_t op_type>
 ppl::common::RetCode arithmetic_wrapper(
     const ppl::common::TensorShape *src0_shape,
@@ -73,25 +36,76 @@ ppl::common::RetCode arithmetic_wrapper(
     void *dst)
 {
     const auto data_type = src0_shape->GetDataType();
-    if (fuse_relu) {
-        switch (data_type) {
-            case ppl::common::DATATYPE_FLOAT32: return arithmetic<float, op_type, true>(src0_shape, src1_shape, dst_shape, (const float *)src0, (const float *)src1, (float *)dst);
-            case ppl::common::DATATYPE_INT64: return arithmetic<int64_t, op_type, true>(src0_shape, src1_shape, dst_shape, (const int64_t *)src0, (const int64_t *)src1, (int64_t *)dst);
+    const auto data_format = src0_shape->GetDataFormat();
+
+    const bool is_eltwise = src0_shape->CalcElementsExcludingPadding() == dst_shape->CalcElementsExcludingPadding() &&
+                            src1_shape->CalcElementsExcludingPadding() == dst_shape->CalcElementsExcludingPadding();
+    if (is_eltwise) {
+        if (fuse_relu) {
+            switch (data_type) {
+                case ppl::common::DATATYPE_FLOAT32: return arithmetic_eltwise_common<float, op_type, true>(dst_shape, (const float *)src0, (const float *)src1, (float *)dst); 
+                case ppl::common::DATATYPE_INT64: return arithmetic_eltwise_common<int64_t, op_type, true>(dst_shape, (const int64_t *)src0, (const int64_t *)src1, (int64_t *)dst); 
 #ifdef PPLNN_USE_ARMV8_2_FP16
-            case ppl::common::DATATYPE_FLOAT16: return arithmetic<__fp16, op_type, true>(src0_shape, src1_shape, dst_shape, (const __fp16 *)src0, (const __fp16 *)src1, (__fp16 *)dst);
+                case ppl::common::DATATYPE_FLOAT16: return arithmetic_eltwise_common<__fp16, op_type, true>(dst_shape, (const __fp16 *)src0, (const __fp16 *)src1, (__fp16 *)dst); 
 #endif
-            default: break;
+#ifdef PPLNN_USE_ARMV8_2_BF16
+                case ppl::common::DATATYPE_BFLOAT16: return arithmetic_eltwise_common<__bf16, op_type, true>(dst_shape, (const __bf16 *)src0, (const __bf16 *)src1, (__bf16 *)dst); 
+#endif
+                default: break;
+            }
+        } else {
+            switch (data_type) {
+                case ppl::common::DATATYPE_FLOAT32: return arithmetic_eltwise_common<float, op_type, false>(dst_shape, (const float *)src0, (const float *)src1, (float *)dst); 
+                case ppl::common::DATATYPE_INT64: return arithmetic_eltwise_common<int64_t, op_type, false>(dst_shape, (const int64_t *)src0, (const int64_t *)src1, (int64_t *)dst); 
+#ifdef PPLNN_USE_ARMV8_2_FP16
+                case ppl::common::DATATYPE_FLOAT16: return arithmetic_eltwise_common<__fp16, op_type, false>(dst_shape, (const __fp16 *)src0, (const __fp16 *)src1, (__fp16 *)dst); 
+#endif
+#ifdef PPLNN_USE_ARMV8_2_BF16
+                case ppl::common::DATATYPE_BFLOAT16: return arithmetic_eltwise_common<__bf16, op_type, false>(dst_shape, (const __bf16 *)src0, (const __bf16 *)src1, (__bf16 *)dst); 
+#endif
+                default: break;
+            }
         }
-    } else {
-        switch (data_type) {
-            case ppl::common::DATATYPE_FLOAT32: return arithmetic<float, op_type, false>(src0_shape, src1_shape, dst_shape, (const float *)src0, (const float *)src1, (float *)dst);
-            case ppl::common::DATATYPE_INT64: return arithmetic<int64_t, op_type, false>(src0_shape, src1_shape, dst_shape, (const int64_t *)src0, (const int64_t *)src1, (int64_t *)dst);
+        return ppl::common::RC_UNSUPPORTED;
+    }
+
+    if (data_format == ppl::common::DATAFORMAT_NDARRAY) {
+        if (data_type == ppl::common::DATATYPE_FLOAT32) {
+            if (fuse_relu)
+                return arithmetic_broadcast_ndarray_common<float, op_type, true>(src0_shape, src1_shape, dst_shape, (const float *)src0, (const float *)src1, (float *)dst);
+            else
+                return arithmetic_broadcast_ndarray_common<float, op_type, false>(src0_shape, src1_shape, dst_shape, (const float *)src0, (const float *)src1, (float *)dst);
+        }
 #ifdef PPLNN_USE_ARMV8_2_FP16
-            case ppl::common::DATATYPE_FLOAT16: return arithmetic<__fp16, op_type, false>(src0_shape, src1_shape, dst_shape, (const __fp16 *)src0, (const __fp16 *)src1, (__fp16 *)dst);
+        if (data_type == ppl::common::DATATYPE_FLOAT16) {
+            if (fuse_relu)
+                return arithmetic_broadcast_ndarray_common<__fp16, op_type, true>(src0_shape, src1_shape, dst_shape, (const __fp16 *)src0, (const __fp16 *)src1, (__fp16 *)dst);
+            else
+                return arithmetic_broadcast_ndarray_common<__fp16, op_type, false>(src0_shape, src1_shape, dst_shape, (const __fp16 *)src0, (const __fp16 *)src1, (__fp16 *)dst);
+        }
 #endif
-            default: break;
+    }
+
+    // NBCX
+    if (data_type == ppl::common::DATATYPE_FLOAT32) {
+        if (data_format == ppl::common::DATAFORMAT_N4CX) { // fp32 n4cx
+            if (fuse_relu)
+                return arithmetic_broadcast_nbcx_common<float, 4, op_type, true>(src0_shape, src1_shape, dst_shape, (const float *)src0, (const float *)src1, (float *)dst);
+            else
+                return arithmetic_broadcast_nbcx_common<float, 4, op_type, false>(src0_shape, src1_shape, dst_shape, (const float *)src0, (const float *)src1, (float *)dst);
         }
     }
+#ifdef PPLNN_USE_ARMV8_2_FP16
+    if (data_type == ppl::common::DATATYPE_FLOAT16) {
+        if (data_format == ppl::common::DATAFORMAT_N8CX) { // fp16 n8cx
+            if (fuse_relu)
+                return arithmetic_broadcast_nbcx_common<__fp16, 8, op_type, true>(src0_shape, src1_shape, dst_shape, (const __fp16 *)src0, (const __fp16 *)src1, (__fp16 *)dst);
+            else
+                return arithmetic_broadcast_nbcx_common<__fp16, 8, op_type, false>(src0_shape, src1_shape, dst_shape, (const __fp16 *)src0, (const __fp16 *)src1, (__fp16 *)dst);
+        }
+    }
+#endif
+
     return ppl::common::RC_UNSUPPORTED;
 }
 

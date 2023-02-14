@@ -59,6 +59,9 @@ template <typename vecType>
 inline vecType vmax(const vecType& v0, const vecType& v1);
 
 template <typename vecType>
+inline vecType vmax0(const vecType& v0);
+
+template <typename vecType>
 inline vecType vzip1(const vecType& v0, const vecType& v1);
 
 template <typename vecType>
@@ -201,6 +204,12 @@ template <>
 inline float32x4_t vmax(const float32x4_t& v0, const float32x4_t& v1)
 {
     return vmaxq_f32(v0, v1);
+}
+
+template <>
+inline float32x4_t vmax0(const float32x4_t& v0)
+{
+    return vmax(v0, vdup_n<float, 4>(0.0f));
 }
 
 template <>
@@ -353,6 +362,12 @@ inline uint32x2_t vmax(const uint32x2_t& v0, const uint32x2_t& v1)
 }
 
 template <>
+inline uint32x2_t vmax0(const uint32x2_t& v0)
+{
+    return vmax(v0, vdup_n<uint32_t, 2>(0));
+}
+
+template <>
 inline uint32x2_t vzip1<uint32x2_t>(const uint32x2_t& v0, const uint32x2_t& v1)
 {
 #ifdef __aarch64__
@@ -467,6 +482,12 @@ template <>
 inline uint32x4_t vmax(const uint32x4_t& v0, const uint32x4_t& v1)
 {
     return vmaxq_u32(v0, v1);
+}
+
+template <>
+inline uint32x4_t vmax0(const uint32x4_t& v0)
+{
+    return vmax(v0, vdup_n<uint32_t, 4>(0));
 }
 
 template <>
@@ -593,6 +614,12 @@ inline int64x2_t vmax(const int64x2_t& v0, const int64x2_t& v1)
     vsetq_lane_s64(max(vgetq_lane_s64(v0, 0), vgetq_lane_s64(v1, 0)), v_dst, 0);
     vsetq_lane_s64(max(vgetq_lane_s64(v0, 1), vgetq_lane_s64(v1, 1)), v_dst, 1);
     return v_dst;
+}
+
+template <>
+inline int64x2_t vmax0(const int64x2_t& v0)
+{
+    return vmax(v0, vdup_n<int64_t, 2>(0));
 }
 
 template <>
@@ -789,6 +816,12 @@ inline uint16x8_t vmax(const uint16x8_t& v0, const uint16x8_t& v1)
 }
 
 template <>
+inline uint16x8_t vmax0(const uint16x8_t& v0)
+{
+    return vmax(v0, vdup_n<uint16_t, 8>(0));
+}
+
+template <>
 inline uint16x8_t vzip1<uint16x8_t>(const uint16x8_t& v0, const uint16x8_t& v1)
 {
 #ifdef PPLNN_USE_ARMV7
@@ -913,6 +946,12 @@ inline uint16x4_t vmax(const uint16x4_t& v0, const uint16x4_t& v1)
 }
 
 template <>
+inline uint16x4_t vmax0(const uint16x4_t& v0)
+{
+    return vmax(v0, vdup_n<uint16_t, 4>(0));
+}
+
+template <>
 inline uint16x4_t vzip1<uint16x4_t>(const uint16x4_t& v0, const uint16x4_t& v1)
 {
 #ifdef PPLNN_USE_ARMV7
@@ -1028,6 +1067,12 @@ inline float16x8_t vmax(const float16x8_t& v0, const float16x8_t& v1)
 }
 
 template <>
+inline float16x8_t vmax0(const float16x8_t& v0)
+{
+    return vmax(v0, vdup_n<__fp16, 8>(0.0f));
+}
+
+template <>
 inline float16x8_t vzip1<float16x8_t>(const float16x8_t& v0, const float16x8_t& v1)
 {
     return vzip1q_f16(v0, v1);
@@ -1062,6 +1107,42 @@ inline __fp16 vaddv<__fp16, 8>(const float16x8_t& v0)
 {
     float16x4_t v_sum = vadd_f16(vget_low_f16(v0), vget_high_f16(v0));
     return vget_lane_f16(v_sum, 0) + vget_lane_f16(v_sum, 1) + vget_lane_f16(v_sum, 2) + vget_lane_f16(v_sum, 3);
+}
+#endif  // fp16x8
+
+/********************** bf16 x 8 **********************/
+
+#ifdef PPLNN_USE_ARMV8_2_BF16
+template <>
+struct DT<__bf16, 8> {
+    typedef bfloat16x8_t vecDT;
+};
+
+template <>
+inline bfloat16x8_t vld<__bf16, 8>(const __bf16* ptr)
+{
+    return vld1q_bf16(ptr);
+}
+
+template <>
+inline void vst<__bf16, 8>(__bf16* ptr, const bfloat16x8_t v)
+{
+    vst1q_bf16(ptr, v);
+}
+
+template <>
+inline bfloat16x8_t vdup_n<__bf16, 8>(const __bf16 s)
+{
+    return vdupq_n_bf16(vcvth_bf16_f32(0.0f));
+}
+
+template <>
+inline bfloat16x8_t vmax0(const bfloat16x8_t& v0)
+{
+    float32x4_t v0_l = vcvt_f32_bf16(vget_low_bf16(v0));
+    float32x4_t v0_h = vcvt_f32_bf16(vget_high_bf16(v0));
+    float32x4_t vzero = vdupq_n_f32(0.0f);
+    return vcombine_bf16(vcvt_bf16_f32(vmaxq_f32(v0_l, vzero)), vcvt_bf16_f32(vmaxq_f32(v0_h, vzero)));
 }
 #endif
 
