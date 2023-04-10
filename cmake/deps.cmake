@@ -100,7 +100,7 @@ if(PPLNN_DEP_PPLCOMMON_PKG)
         ${PPLNN_DEP_PPLCOMMON_PKG})
 else()
     if(NOT PPLNN_DEP_PPLCOMMON_GIT)
-        set(PPLNN_DEP_PPLCOMMON_GIT git@github.com:kyu-junyi/ppl.common.git)
+        set(PPLNN_DEP_PPLCOMMON_GIT "https://github.com/kyu-junyi/ppl.common.git")
     endif()
     hpcc_declare_git_dep(pplcommon
         ${PPLNN_DEP_PPLCOMMON_GIT}
