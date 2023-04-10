@@ -410,8 +410,11 @@ static ppl::common::RetCode concat_wrapper(
         }
     }
     if (sizeof(eT) == 2) {
-        if (data_format == ppl::common::DATAFORMAT_N8CX) { // 16bit n8cx
+        if (data_format == ppl::common::DATAFORMAT_N8CX) { // 16bit n8cx (fp16)
             return concat_nbcx<uint16_t, 8>(src_shape_list, (const uint16_t **)src_list, num_src, axis, (uint16_t *)dst);
+        }
+        if (data_format == ppl::common::DATAFORMAT_N4CX) { // 16bit n4cx (bf16)
+            return concat_nbcx<uint16_t, 4>(src_shape_list, (const uint16_t **)src_list, num_src, axis, (uint16_t *)dst);
         }
     }
 

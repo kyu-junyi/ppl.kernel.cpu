@@ -697,10 +697,10 @@ ppl::common::RetCode conv2d_n8cx_im2col_fp16_offline_manager::pick_best_schedule
     sched_param_.hgemm_n_block1 = best_n_blk;
     sched_param_.hgemm_k_block1 = best_k_blk;
 #ifdef PPLNN_ENABLE_KERNEL_PROFILING
-    LOG(INFO) << "choose sp param m: " << sched_param_.hgemm_m_block1;
-    LOG(INFO) << "choose sp param n: " << sched_param_.hgemm_n_block1;
-    LOG(INFO) << "choose sp param k: " << sched_param_.hgemm_k_block1;
-    LOG(INFO) << "best run time: " << best_run_time / num_benchmark_iter / 1000 << " ms";
+    //LOG(INFO) << "choose sp param m: " << sched_param_.hgemm_m_block1;
+    //LOG(INFO) << "choose sp param n: " << sched_param_.hgemm_n_block1;
+    //LOG(INFO) << "choose sp param k: " << sched_param_.hgemm_k_block1;
+    //LOG(INFO) << "best run time: " << best_run_time / num_benchmark_iter / 1000 << " ms";
 #endif
     run_time = (double)best_run_time / (double)num_benchmark_iter;
     return ppl::common::RC_SUCCESS;

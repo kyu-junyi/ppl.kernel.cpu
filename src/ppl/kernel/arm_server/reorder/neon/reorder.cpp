@@ -21,7 +21,7 @@
 #include "ppl/kernel/arm_server/common/internal_include.h"
 #include "ppl/kernel/arm_server/common/threading_tools.h"
 
-namespace ppl { namespace kernel { namespace arm_server {
+namespace ppl { namespace kernel { namespace arm_server { namespace neon {
 
 #define TRANSPOSE_8X8(input, output)                                                                                      \
     {                                                                                                                     \
@@ -45,8 +45,13 @@ namespace ppl { namespace kernel { namespace arm_server {
         output[7]    = (float16x8_t)vcombine_f32(vget_high_f32(temp_fp32[1].val[1]), vget_high_f32(temp_fp32[3].val[1])); \
     }
 
-ppl::common::RetCode N4cxToNdarrayFp32(const float* src, int64_t batch, int64_t channels, int64_t height, int64_t width, float* dst)
+ppl::common::RetCode trans_f32c4_to_f32nda(const float* src,  const int64_t shape[4], float* dst)
 {
+    const int64_t batch    = shape[0];
+    const int64_t channels = shape[1];
+    const int64_t height   = shape[2];
+    const int64_t width    = shape[3];
+
     const int64_t c_blk      = 4;
     const int64_t pad_c      = round_up(channels, c_blk);
     const int64_t inner_dims = height * width;
@@ -120,8 +125,13 @@ ppl::common::RetCode N4cxToNdarrayFp32(const float* src, int64_t batch, int64_t 
     return ppl::common::RC_SUCCESS;
 }
 
-ppl::common::RetCode NdarrayToN4cxFp32(const float* src, int64_t batch, int64_t channels, int64_t height, int64_t width, float* dst)
+ppl::common::RetCode trans_f32nda_to_f32c4(const float* src,  const int64_t shape[4], float* dst)
 {
+    const int64_t batch    = shape[0];
+    const int64_t channels = shape[1];
+    const int64_t height   = shape[2];
+    const int64_t width    = shape[3];
+
     const int64_t c_blk      = 4;
     const int64_t pad_c      = round_up(channels, c_blk);
     const int64_t inner_dims = height * width;
@@ -202,8 +212,13 @@ ppl::common::RetCode NdarrayToN4cxFp32(const float* src, int64_t batch, int64_t 
 }
 
 #ifdef PPLNN_USE_ARMV8_2_FP16
-ppl::common::RetCode N8cxToNdarrayFp16(const __fp16* src, int64_t batch, int64_t channels, int64_t height, int64_t width, __fp16* dst)
+ppl::common::RetCode trans_f16c8_to_f16nda(const __fp16* src, const int64_t shape[4], __fp16* dst)
 {
+    const int64_t batch    = shape[0];
+    const int64_t channels = shape[1];
+    const int64_t height   = shape[2];
+    const int64_t width    = shape[3];
+
     const int64_t simd_w     = 8;
     const int64_t c_blk      = 8;
     const int64_t pad_c      = round_up(channels, c_blk);
@@ -350,8 +365,13 @@ ppl::common::RetCode N8cxToNdarrayFp16(const __fp16* src, int64_t batch, int64_t
     return ppl::common::RC_SUCCESS;
 }
 
-ppl::common::RetCode NdarrayToN8cxFp16(const __fp16* src, int64_t batch, int64_t channels, int64_t height, int64_t width, __fp16* dst)
+ppl::common::RetCode trans_f16nda_to_f16c8(const __fp16* src, const int64_t shape[4], __fp16* dst)
 {
+    const int64_t batch    = shape[0];
+    const int64_t channels = shape[1];
+    const int64_t height   = shape[2];
+    const int64_t width    = shape[3];
+
     const int64_t simd_w     = 8;
     const int64_t c_blk      = 8;
     const int64_t pad_c      = round_up(channels, c_blk);
@@ -527,8 +547,63 @@ inline void cvt_and_store_fp16x8(float* data, const float16x8_t v_fp16)
     vst1q_f32(data + 4, v_fp32_1);
 }
 
-ppl::common::RetCode NdarrayFp32ToN8cxFp16(const float* src, int64_t batch, int64_t channels, int64_t height, int64_t width, __fp16* dst)
+ppl::common::RetCode cast_f32_to_f16(const float* src, const int64_t shape[4], __fp16* dst)
 {
+    const int64_t len         = shape[0] * shape[1] * shape[2] * shape[3];
+    const int64_t simd_w      = 8;
+    const int64_t unroll_len  = simd_w * 4;
+    const int64_t unroll_body = round(len, unroll_len);
+
+    PRAGMA_OMP_PARALLEL_FOR()
+    for (int64_t i = 0; i < unroll_body; i += unroll_len) {
+        const float16x8_t v_data_0 = load_and_cvt_fp32x8(src + i + simd_w * 0);
+        const float16x8_t v_data_1 = load_and_cvt_fp32x8(src + i + simd_w * 1);
+        const float16x8_t v_data_2 = load_and_cvt_fp32x8(src + i + simd_w * 2);
+        const float16x8_t v_data_3 = load_and_cvt_fp32x8(src + i + simd_w * 3);
+        vst1q_f16(dst + i + simd_w * 0, v_data_0);
+        vst1q_f16(dst + i + simd_w * 1, v_data_1);
+        vst1q_f16(dst + i + simd_w * 2, v_data_2);
+        vst1q_f16(dst + i + simd_w * 3, v_data_3);
+    }
+    for (int64_t i = unroll_body; i < len; i++) {
+        dst[i] = src[i];
+    }
+
+    return ppl::common::RC_SUCCESS;
+}
+
+ppl::common::RetCode cast_f16_to_f32(const __fp16* src, const int64_t shape[4], float* dst)
+{
+    const int64_t len         = shape[0] * shape[1] * shape[2] * shape[3];
+    const int64_t simd_w      = 8;
+    const int64_t unroll_len  = simd_w * 4;
+    const int64_t unroll_body = round(len, unroll_len);
+
+    PRAGMA_OMP_PARALLEL_FOR()
+    for (int64_t i = 0; i < unroll_body; i += unroll_len) {
+        const float16x8_t v_data_0 = vld1q_f16(src + i + simd_w * 0);
+        const float16x8_t v_data_1 = vld1q_f16(src + i + simd_w * 1);
+        const float16x8_t v_data_2 = vld1q_f16(src + i + simd_w * 2);
+        const float16x8_t v_data_3 = vld1q_f16(src + i + simd_w * 3);
+        cvt_and_store_fp16x8(dst + i + simd_w * 0, v_data_0);
+        cvt_and_store_fp16x8(dst + i + simd_w * 1, v_data_1);
+        cvt_and_store_fp16x8(dst + i + simd_w * 2, v_data_2);
+        cvt_and_store_fp16x8(dst + i + simd_w * 3, v_data_3);
+    }
+    for (int64_t i = unroll_body; i < len; i++) {
+        dst[i] = src[i];
+    }
+
+    return ppl::common::RC_SUCCESS;
+}
+
+ppl::common::RetCode reorder_f32nda_to_f16c8(const float* src, const int64_t shape[4], __fp16* dst)
+{
+    const int64_t batch    = shape[0];
+    const int64_t channels = shape[1];
+    const int64_t height   = shape[2];
+    const int64_t width    = shape[3];
+
     const int64_t simd_w     = 8;
     const int64_t c_blk      = 8;
     const int64_t pad_c      = round_up(channels, c_blk);
@@ -689,8 +764,13 @@ ppl::common::RetCode NdarrayFp32ToN8cxFp16(const float* src, int64_t batch, int6
     return ppl::common::RC_SUCCESS;
 }
 
-ppl::common::RetCode N8cxFp16ToNdarrayFp32(const __fp16* src, int64_t batch, int64_t channels, int64_t height, int64_t width, float* dst)
+ppl::common::RetCode reorder_f16c8_to_f32nda(const __fp16* src, const int64_t shape[4], float* dst)
 {
+    const int64_t batch    = shape[0];
+    const int64_t channels = shape[1];
+    const int64_t height   = shape[2];
+    const int64_t width    = shape[3];
+
     const int64_t simd_w     = 8;
     const int64_t c_blk      = 8;
     const int64_t pad_c      = round_up(channels, c_blk);
@@ -837,56 +917,13 @@ ppl::common::RetCode N8cxFp16ToNdarrayFp32(const __fp16* src, int64_t batch, int
     return ppl::common::RC_SUCCESS;
 }
 
-ppl::common::RetCode Fp32ToFp16(const float* src, const int64_t len, __fp16* dst)
+ppl::common::RetCode reorder_f32c4_to_f16c8(const float* src, const int64_t shape[4], __fp16* dst)
 {
-    const int64_t simd_w      = 8;
-    const int64_t unroll_len  = simd_w * 4;
-    const int64_t unroll_body = round(len, unroll_len);
+    const int64_t batch    = shape[0];
+    const int64_t channels = shape[1];
+    const int64_t height   = shape[2];
+    const int64_t width    = shape[3];
 
-    PRAGMA_OMP_PARALLEL_FOR()
-    for (int64_t i = 0; i < unroll_body; i += unroll_len) {
-        const float16x8_t v_data_0 = load_and_cvt_fp32x8(src + i + simd_w * 0);
-        const float16x8_t v_data_1 = load_and_cvt_fp32x8(src + i + simd_w * 1);
-        const float16x8_t v_data_2 = load_and_cvt_fp32x8(src + i + simd_w * 2);
-        const float16x8_t v_data_3 = load_and_cvt_fp32x8(src + i + simd_w * 3);
-        vst1q_f16(dst + i + simd_w * 0, v_data_0);
-        vst1q_f16(dst + i + simd_w * 1, v_data_1);
-        vst1q_f16(dst + i + simd_w * 2, v_data_2);
-        vst1q_f16(dst + i + simd_w * 3, v_data_3);
-    }
-    for (int64_t i = unroll_body; i < len; i++) {
-        dst[i] = src[i];
-    }
-
-    return ppl::common::RC_SUCCESS;
-}
-
-ppl::common::RetCode Fp16ToFp32(const __fp16* src, const int64_t len, float* dst)
-{
-    const int64_t simd_w      = 8;
-    const int64_t unroll_len  = simd_w * 4;
-    const int64_t unroll_body = round(len, unroll_len);
-
-    PRAGMA_OMP_PARALLEL_FOR()
-    for (int64_t i = 0; i < unroll_body; i += unroll_len) {
-        const float16x8_t v_data_0 = vld1q_f16(src + i + simd_w * 0);
-        const float16x8_t v_data_1 = vld1q_f16(src + i + simd_w * 1);
-        const float16x8_t v_data_2 = vld1q_f16(src + i + simd_w * 2);
-        const float16x8_t v_data_3 = vld1q_f16(src + i + simd_w * 3);
-        cvt_and_store_fp16x8(dst + i + simd_w * 0, v_data_0);
-        cvt_and_store_fp16x8(dst + i + simd_w * 1, v_data_1);
-        cvt_and_store_fp16x8(dst + i + simd_w * 2, v_data_2);
-        cvt_and_store_fp16x8(dst + i + simd_w * 3, v_data_3);
-    }
-    for (int64_t i = unroll_body; i < len; i++) {
-        dst[i] = src[i];
-    }
-
-    return ppl::common::RC_SUCCESS;
-}
-
-ppl::common::RetCode N4cxFp32ToN8cxFp16(const float* src, int64_t batch, int64_t channels, int64_t height, int64_t width, __fp16* dst)
-{
     const int64_t simd_w_fp32 = 4;
     const int64_t simd_w_fp16 = 8;
     const int64_t c_blk_in    = 4;
@@ -967,8 +1004,13 @@ ppl::common::RetCode N4cxFp32ToN8cxFp16(const float* src, int64_t batch, int64_t
     return ppl::common::RC_SUCCESS;
 }
 
-ppl::common::RetCode N8cxFp16ToN4cxFp32(const __fp16* src, int64_t batch, int64_t channels, int64_t height, int64_t width, float* dst)
+ppl::common::RetCode reorder_f16c8_to_f32c4(const __fp16* src, const int64_t shape[4], float* dst)
 {
+    const int64_t batch    = shape[0];
+    const int64_t channels = shape[1];
+    const int64_t height   = shape[2];
+    const int64_t width    = shape[3];
+
     const int64_t simd_w_fp16 = 8;
     const int64_t simd_w_fp32 = 4;
     const int64_t c_blk_in    = 8;
@@ -1050,4 +1092,227 @@ ppl::common::RetCode N8cxFp16ToN4cxFp32(const __fp16* src, int64_t batch, int64_
 }
 #endif
 
-}}}; // namespace ppl::kernel::arm_server
+#if 0
+#ifdef PPLNN_USE_ARMV8_2_BF16
+ppl::common::RetCode trans_bhfc4_to_bhfnda(const __bf16* src, const int64_t shape[4], __bf16* dst)
+{
+    const int64_t batch    = shape[0];
+    const int64_t channels = shape[1];
+    const int64_t height   = shape[2];
+    const int64_t width    = shape[3];
+
+    return ppl::common::RC_NOT_FOUND;
+}
+
+ppl::common::RetCode trans_bhfnda_to_bhfc4(const __bf16* src, const int64_t shape[4], __bf16* dst)
+{
+    const int64_t batch    = shape[0];
+    const int64_t channels = shape[1];
+    const int64_t height   = shape[2];
+    const int64_t width    = shape[3];
+
+    return ppl::common::RC_NOT_FOUND;
+}
+
+ppl::common::RetCode cast_f32_to_bhalf(const float* src, const int64_t shape[4], __bf16* dst)
+{
+    const int64_t len    = shape[0] * shape[1] * shape[2] * shape[3];
+    const int64_t len_f8 = (len / 8) * 8;
+    
+    for (size_t i = 0; i < len_f8; i += 8) {
+        float32x4_t vin1 = vld1q_f32(((float *)src) + i    );
+        float32x4_t vin2 = vld1q_f32(((float *)src) + i + 4);
+
+        int16x8_t vout = vuzp2q_s16(vreinterpretq_s16_f32(vin1), vreinterpretq_s16_f32(vin2));
+        vst1q_s16(((int16_t *)dst)+i, vout);
+    }
+    const int16x8_t vzero = vdupq_n_s16(0);
+    for (size_t i = len_f8; i < len; i += 4) {
+        float32x4_t vin = vld1q_f32(((float *)src) + i);
+        int16x8_t vout = vuzp2q_s16(vreinterpretq_s16_f32(vin), vzero);
+        vst1_s16(((int16_t *)dst)+i, vget_low_s16(vout));
+    }
+
+    return ppl::common::RC_SUCCESS;
+}
+
+ppl::common::RetCode cast_bhalf_to_f32(const __bf16* src, const int64_t shape[4], float* dst)
+{
+    const int64_t len    = shape[0] * shape[1] * shape[2] * shape[3];
+    const int64_t len_f8 = (len / 8) * 8;
+    
+    const int16x8_t vzero = vdupq_n_s16(0);
+    for (size_t i = 0; i < len_f8; i += 8) {
+        int16x8_t vin = vld1q_s16(((int16_t *)src) + i);
+        float32x4_t vout1 = vreinterpretq_f32_s16(vzip1q_s16(vzero, vin));
+        float32x4_t vout2 = vreinterpretq_f32_s16(vzip2q_s16(vzero, vin));
+        vst1q_f32(((float *)dst)+i,   vout1);
+        vst1q_f32(((float *)dst)+i+4, vout2);
+    }
+    for (size_t i = len_f8; i < len; i += 4) {
+        int16x4_t vzero_d = vdup_n_s16(0);
+        int16x4_t vin = vld1_s16(((int16_t *)src) + i);
+        float32x2_t vout = vreinterpret_f32_s16(vzip1_s16(vzero_d, vin));
+        vst1_f32(((float *)dst)+i, vout);
+    }
+
+    return ppl::common::RC_SUCCESS;
+}
+
+ppl::common::RetCode reorder_f32nda_to_bhfc4(const float* src, const int64_t shape[4], __bf16* dst)
+{
+    const int64_t batch    = shape[0];
+    const int64_t channels = shape[1];
+    const int64_t height   = shape[2];
+    const int64_t width    = shape[3];
+    
+    return ppl::common::RC_NOT_FOUND;
+}
+
+ppl::common::RetCode reorder_bhfc4_to_f32nda(const __bf16* src, const int64_t shape[4], float* dst)
+{
+    const int64_t batch    = shape[0];
+    const int64_t channels = shape[1];
+    const int64_t height   = shape[2];
+    const int64_t width    = shape[3];
+    
+    return ppl::common::RC_NOT_FOUND;
+}
+
+// fallback reorder<cast>.f32c4/bhfc4 to cast.f32/bhalf
+
+ppl::common::RetCode cast_f16_to_bhalf(const __fp16* src, const int64_t shape[4], __bf16* dst)
+{
+    const int64_t len    = shape[0] * shape[1] * shape[2] * shape[3];
+    
+    return ppl::common::RC_NOT_FOUND;
+}
+
+ppl::common::RetCode cast_bhalf_to_f16(const __bf16* src, const int64_t shape[4], __fp16* dst)
+{
+    const int64_t len    = shape[0] * shape[1] * shape[2] * shape[3];
+    
+    return ppl::common::RC_NOT_FOUND;
+}
+
+ppl::common::RetCode reorder_f16nda_to_bhfc4(const __fp16* src, const int64_t shape[4], __bf16* dst)
+{
+    const int64_t batch    = shape[0];
+    const int64_t channels = shape[1];
+    const int64_t height   = shape[2];
+    const int64_t width    = shape[3];
+    
+    return ppl::common::RC_NOT_FOUND;
+}
+
+ppl::common::RetCode reorder_bhfc4_to_f16nda(const __bf16* src, const int64_t shape[4], __fp16* dst)
+{
+    
+    return ppl::common::RC_NOT_FOUND;
+}
+
+ppl::common::RetCode reorder_f16c8_to_bhfc4(const __fp16* src, const int64_t shape[4], __bf16* dst)
+{
+    const int64_t n  = shape[0];
+    const int64_t c  = shape[1];
+    const int64_t hw = shape[2] * shape[3];
+
+    size_t c_p4 = (c + 3) / 4 * 4;
+    size_t c_p8 = (c + 7) / 8 * 8;
+    size_t c_p4_f8 = (c_p4 / 8) * 8;
+
+    for (size_t nid = 0; nid < n; nid++) {
+        __fp16 *src_per_batch = ((__fp16 *)src) + nid * c_p8 * hw;
+        __bf16 *dst_per_batch = ((__bf16 *)dst) + nid * c_p4 * hw;
+
+        for (size_t cid = 0; cid < c_p4_f8; cid += 8) {
+            __fp16 *src_per_batch_ch07 = src_per_batch + cid * hw;
+
+            __bf16 *dst_per_batch_ch03 = dst_per_batch + cid * hw;
+            __bf16 *dst_per_batch_ch47 = dst_per_batch + cid * hw + hw * 4;
+
+            for (size_t xid = 0; xid < hw; xid ++) {
+                float16x8_t vin_c07_f16 = vld1q_f16(src_per_batch_ch07 + xid * 8);
+
+                float32x4_t vin_c03_f32 = vcvt_f32_f16(vget_low_f16(vin_c07_f16));
+                float32x4_t vin_c47_f32 = vcvt_high_f32_f16(vin_c07_f16);
+
+                bfloat16x8_t vout_c07_bf16 = vreinterpretq_bf16_s16( vuzp2q_s16( vreinterpretq_s16_f32(vin_c03_f32), vreinterpretq_s16_f32(vin_c47_f32) ) );
+
+                vst1_bf16(dst_per_batch_ch03 + xid * 4, vget_low_bf16(vout_c07_bf16) );
+                vst1_bf16(dst_per_batch_ch47 + xid * 4, vget_high_bf16(vout_c07_bf16));
+            }
+        }
+        for (size_t cid = c_p4_f8; cid < c_p4; cid += 8) {
+            __fp16 *src_per_batch_ch07 = src_per_batch + cid * hw;
+
+            __bf16 *dst_per_batch_ch03 = dst_per_batch + cid * hw;
+
+            int16x8_t vzero_s16 = vdupq_n_s16(0);
+            for (size_t xid = 0; xid < hw; xid ++) {
+                float16x4_t vin_c03_f16 = vld1_f16(src_per_batch_ch07 + xid * 8);
+
+                float32x4_t vin_c03_f32 = vcvt_f32_f16(vin_c03_f16);
+
+                int16x8_t vout_c03_zero47_s16 = vuzp2q_s16( vreinterpretq_s16_f32(vin_c03_f32), vzero_s16 );
+
+                vst1_s16((int16_t *)(dst_per_batch_ch03 + xid * 4), vget_low_s16(vout_c03_zero47_s16) );
+            }
+        }
+    }
+    return ppl::common::RC_SUCCESS;
+}
+
+ppl::common::RetCode reorder_bhfc4_to_f16c8(const __bf16* src, const int64_t shape[4], __fp16* dst)
+{
+    const int64_t n  = shape[0];
+    const int64_t c  = shape[1];
+    const int64_t hw = shape[2] * shape[3];
+
+    size_t c_p4 = (c + 3) / 4 * 4;
+    size_t c_p8 = (c + 7) / 8 * 8;
+    size_t c_p4_f8 = (c_p4 / 8) * 8;
+
+    for (size_t nid = 0; nid < n; nid++) {
+        __bf16 *src_per_batch = ((__bf16 *)src) + nid * c_p4 * hw;
+        __fp16 *dst_per_batch = ((__fp16 *)dst) + nid * c_p8 * hw;
+
+        for (size_t cid = 0; cid < c_p4_f8; cid += 8) {
+            __bf16 *src_per_batch_ch03 = src_per_batch + cid * hw;
+            __bf16 *src_per_batch_ch47 = src_per_batch + cid * hw + hw * 4;
+            __fp16 *dst_per_batch_ch07 = dst_per_batch + cid * hw;
+
+            for (size_t xid = 0; xid < hw; xid ++) {
+                bfloat16x4_t vin_c03 = vld1_bf16(src_per_batch_ch03 + xid * 4);
+                bfloat16x4_t vin_c47 = vld1_bf16(src_per_batch_ch47 + xid * 4);
+
+                float32x4_t vin_c03_f32 = vcvt_f32_bf16(vin_c03);
+                float32x4_t vin_c47_f32 = vcvt_f32_bf16(vin_c47);
+
+                float16x8_t vin_c07_f16 = vcombine_f16(vcvt_f16_f32(vin_c03_f32), vcvt_f16_f32(vin_c47_f32));
+                vst1q_f16(dst_per_batch_ch07 + xid * 8, vin_c07_f16);
+            }
+        }
+        for (size_t cid = c_p4_f8; cid < c_p4; cid += 4) {
+            __bf16 *src_per_batch_ch03 = src_per_batch + cid * hw;
+            __fp16 *dst_per_batch_ch07 = ((__fp16 *)dst_per_batch) + cid * hw;
+
+            float16x4_t vzero_f16_d = vdup_n_f16(0.0f);
+            for (size_t xid = 0; xid < hw; xid ++) {
+                bfloat16x4_t vin_c03 = vld1_bf16(src_per_batch_ch03 + xid * 4);
+
+                float32x4_t vin_c03_f32 = vcvt_f32_bf16(vin_c03);
+
+                float16x8_t vin_c07_f16 = vcombine_f16(vcvt_f16_f32(vin_c03_f32), vzero_f16_d);
+                vst1q_f16(dst_per_batch_ch07 + xid * 8, vin_c07_f16);
+            }
+        }
+    }
+
+    return ppl::common::RC_SUCCESS;
+}
+
+#endif
+#endif
+
+}}}}; // namespace ppl::kernel::arm_server::neon

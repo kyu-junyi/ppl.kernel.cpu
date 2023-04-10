@@ -683,8 +683,8 @@ ppl::common::RetCode conv2d_n4cx_direct_fp32_offline_manager::pick_best_schedule
 
     sched_param_.ic_tile = best_ic_tile;
 #ifdef PPLNN_ENABLE_KERNEL_PROFILING
-    LOG(DEBUG) << "choose sp param ic: " << sched_param_.ic_tile;
-    LOG(DEBUG) << "best run time: " << best_run_time / num_benchmark_iter / 1000 << " ms";
+    //LOG(DEBUG) << "choose sp param ic: " << sched_param_.ic_tile;
+    //LOG(DEBUG) << "best run time: " << best_run_time / num_benchmark_iter / 1000 << " ms";
 #endif
     run_time = (double)best_run_time / (double)num_benchmark_iter;
     return ppl::common::RC_SUCCESS;

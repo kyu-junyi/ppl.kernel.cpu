@@ -1040,10 +1040,10 @@ ppl::common::RetCode conv2d_wgb2f3_fp32_offline_manager::pick_best_schedule_para
     sched_param_.ic_seg   = best_ic_blk;
     sched_param_.tile_seg = best_tile_blk;
 #ifdef PPLNN_ENABLE_KERNEL_PROFILING
-    LOG(INFO) << "choose sp param oc: " << sched_param_.oc_seg;
-    LOG(INFO) << "choose sp param ic: " << sched_param_.ic_seg;
-    LOG(INFO) << "choose sp param tile: " << sched_param_.tile_seg;
-    LOG(INFO) << "best run time: " << best_run_time / num_benchmark_iter / 1000 << " ms";
+    //LOG(INFO) << "choose sp param oc: " << sched_param_.oc_seg;
+    //LOG(INFO) << "choose sp param ic: " << sched_param_.ic_seg;
+    //LOG(INFO) << "choose sp param tile: " << sched_param_.tile_seg;
+    //LOG(INFO) << "best run time: " << best_run_time / num_benchmark_iter / 1000 << " ms";
 #endif
     run_time = (double)best_run_time / (double)num_benchmark_iter;
     return ppl::common::RC_SUCCESS;

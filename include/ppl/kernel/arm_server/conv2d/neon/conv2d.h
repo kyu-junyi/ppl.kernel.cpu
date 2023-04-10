@@ -18,6 +18,7 @@
 #ifndef __ST_PPL_KERNEL_ARM_SERVER_FP16_CONV2D_H_
 #define __ST_PPL_KERNEL_ARM_SERVER_FP16_CONV2D_H_
 
+#include <limits>
 #include <string>
 
 #include "ppl/kernel/arm_server/common/general_include.h"
@@ -139,6 +140,16 @@ struct conv2d_algo_info {
     ppl::common::datatype_t data_type;
     ppl::common::dataformat_t input_format;
     ppl::common::dataformat_t output_format;
+
+    conv2d_algo_info& operator=(const conv2d_algo_info& v) {
+        this->algo_type     = v.algo_type;
+        this->isa           = v.isa;
+        this->data_type     = v.data_type;
+        this->input_format  = v.input_format;
+        this->output_format = v.output_format;
+
+        return *this;
+    }
 };
 
 class conv2d_runtime_executor {
@@ -296,6 +307,7 @@ protected:
     uint64_t cvt_filter_size_;
     uint64_t cvt_bias_size_;
     bool is_bias_owner_;
+    double kernel_time_;
 
 private:
     conv2d_algo_info algo_info_;
@@ -307,7 +319,8 @@ public:
         , cvt_bias_(nullptr)
         , cvt_filter_size_(0)
         , cvt_bias_size_(0)
-        , is_bias_owner_(false) {}
+        , is_bias_owner_(true)
+        , kernel_time_(std::numeric_limits<double>::max()) {}
 
     conv2d_offline_manager(const conv2d_param &param, ppl::common::Allocator *allocator)
         : allocator_(allocator)
@@ -315,7 +328,8 @@ public:
         , cvt_bias_(nullptr)
         , cvt_filter_size_(0)
         , cvt_bias_size_(0)
-        , is_bias_owner_(false)
+        , is_bias_owner_(true)
+        , kernel_time_(std::numeric_limits<double>::max())
     {
         param_ = param;
     }
@@ -383,7 +397,16 @@ public:
         }
     }
 
-    conv2d_algo_info &algo_info()
+    double get_kernel_time() const
+    {
+        return kernel_time_;
+    }
+    void set_kernel_time(const double t)
+    {
+        kernel_time_ = t;
+    }
+
+    conv2d_algo_info& algo_info()
     {
         return algo_info_;
     };

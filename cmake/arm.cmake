@@ -1,4 +1,5 @@
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -w")
 if(HPCC_USE_OPENMP AND NOT PPLNN_USE_OPENMP)
     message(FATAL_ERROR "`HPCC_USE_OPENMP` is deprecated. use `PPLNN_USE_OPENMP` instead.")
 endif()
